@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  :root {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 95%;
+
+    --card: 222 40% 10%;
+    --card-foreground: 210 40% 95%;
+
+    --popover: 222 40% 10%;
+    --popover-foreground: 210 40% 95%;
+
+    --primary: 199 89% 48%;
+    --primary-foreground: 222 47% 7%;
+
+    --secondary: 222 35% 16%;
+    --secondary-foreground: 210 40% 90%;
+
+    --muted: 222 35% 14%;
+    --muted-foreground: 215 20% 55%;
+
+    --accent: 199 89% 48%;
+    --accent-foreground: 222 47% 7%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 222 35% 18%;
+    --input: 222 35% 16%;
+    --ring: 199 89% 48%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 222 47% 7%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 199 89% 48%;
+    --sidebar-primary-foreground: 222 47% 7%;
+    --sidebar-accent: 222 35% 16%;
+    --sidebar-accent-foreground: 210 40% 90%;
+    --sidebar-border: 222 35% 18%;
+    --sidebar-ring: 199 89% 48%;
+
+    /* Custom semantic tokens */
+    --color-success: 142 71% 45%;
+    --color-warning: 38 92% 50%;
+    --color-error: 0 72% 51%;
+    --color-info: 199 89% 48%;
+
+    --color-surface-1: 222 40% 10%;
+    --color-surface-2: 222 35% 14%;
+    --color-surface-3: 222 35% 18%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
+
+@layer components {
+  .status-running {
+    @apply text-emerald-400 bg-emerald-400/10 border border-emerald-400/20;
+  }
+  .status-stopped {
+    @apply text-red-400 bg-red-400/10 border border-red-400/20;
+  }
+  .status-unknown {
+    @apply text-yellow-400 bg-yellow-400/10 border border-yellow-400/20;
+  }
+
+  .card-surface {
+    @apply bg-[hsl(var(--color-surface-1))] border border-[hsl(var(--color-surface-3))] rounded-xl;
+  }
+
+  .section-header {
+    @apply flex items-center gap-2 text-sm font-semibold text-[hsl(var(--color-info))] uppercase tracking-wider;
+  }
+
+  .data-label {
+    @apply text-xs text-muted-foreground font-medium;
+  }
+
+  .data-value {
+    @apply text-sm text-foreground font-medium;
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 20px hsl(199 89% 48% / 0.15);
+  }
+}
