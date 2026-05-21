@@ -38,30 +38,24 @@ export default function Index() {
   const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
 
-  // Fetch preloaded inventory JSON from public folder, with fallback to raw GitHub if not found
+  // Fetch the preloaded inventory JSON from the public folder (served by Vercel/local dev)
   useEffect(() => {
-      const fallbackUrl = "https://raw.githubusercontent.com/Felocal1/ip-inventario/master/public/maquinas_iniciais.json";
-      fetch("/maquinas_iniciais.json")
-        .then((res) => {
-          if (!res.ok) {
-            console.warn(`Primary JSON not found (${res.status}), falling back to GitHub raw URL`);
-            return fetch(fallbackUrl);
-          }
-          return res;
-        })
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error(`Failed to load preloaded machines: ${res.status}`);
-          }
-          return res.json();
-        })
-        .then((data: MachineInventory[]) => {
-          console.log('Preloaded machines loaded:', data.length);
-          setPreloadedMachines(data);
-        })
-        .catch((err) => {
-          console.error('Failed to load preloaded machines', err);
-        });
+    const localUrl = "/maquinas_iniciais.json";
+    fetch(localUrl)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Failed to load preloaded machines: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data: MachineInventory[]) => {
+        console.log('✅ Preloaded machines loaded:', data.length);
+        setPreloadedMachines(data);
+      })
+      .catch((err) => {
+        console.error('❌ Failed to load preloaded machines', err);
+        toast.error('Não foi possível carregar os dados das máquinas pré‑carregadas.');
+      });
   }, []);
 
 
