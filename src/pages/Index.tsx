@@ -9,12 +9,7 @@ import { parseInventoryHTML, loadInventories, saveInventories, removeInventory }
 import type { MachineInventory } from "@/types/inventory";
 import { Search, Server, HardDrive, Monitor, Activity, ChevronDown, SlidersHorizontal, X, Wifi } from "lucide-react";
 import heroBg from "@/assets/herói-bg.jpg";
-// Removed static import of large JSON. We'll fetch it at runtime.
 
-import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-import Header from "@/components/layout/Cabecalho";
-import MachineCard from "@/components/features/MachineCard";
 type FilterOS = "all" | "win11" | "win10" | "server" | "other";
 type FilterStatus = "all" | "today";
 type SortBy = "name" | "date" | "ip" | "ram";
