@@ -6,7 +6,7 @@ import {
   ArrowLeft, Monitor, Cpu, Server, Wifi, HardDrive,
   Users, Package, Activity, Share2, Printer, ChevronDown, ChevronRight, Search
 } from "lucide-react";
-import type { MachineInventory, Service } from "@/types/inventory";
+import type { MachineInventory, Service } from "@/types/inventario";
 
 function SectionWrapper({ title, icon, children, defaultOpen = true }: {
   title: string; icon: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean

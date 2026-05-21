@@ -7,6 +7,7 @@ interface FileUploaderProps {
 
 export default function FileUploader({ onFilesLoaded }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
   const readFileWithEncoding = (file: File, encoding: string): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -19,10 +20,13 @@ export default function FileUploader({ onFilesLoaded }: FileUploaderProps) {
 
   const processFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    console.log("[FileUploader] Processing", files.length, "files");
     const results: Array<{ name: string; content: string }> = [];
     for (const file of Array.from(files)) {
       const nameLower = file.name.toLowerCase();
+      console.log(`[FileUploader] Checking file: ${file.name}`);
       if (nameLower.endsWith(".html") || nameLower.endsWith(".htm")) {
+        console.log(`[FileUploader] Reading ${file.name}...`);
         // Try Windows-1252 first (VBS default), fallback to UTF-8
         let content = "";
         try {
@@ -32,16 +36,22 @@ export default function FileUploader({ onFilesLoaded }: FileUploaderProps) {
             content = await readFileWithEncoding(file, "utf-8");
           }
         } catch {
+          console.warn(`[FileUploader] Failed to read with windows-1252, trying text()`);
           content = await file.text();
         }
-        console.log("[FileUploader] Loaded:", file.name, "size:", content.length);
+        console.log("[FileUploader] Loaded:", file.name, "size:", content.length, "bytes");
         results.push({ name: file.name, content });
+      } else {
+        console.warn("[FileUploader] Skipping non-HTML file:", file.name);
       }
     }
+    console.log("[FileUploader] Total valid files:", results.length);
+    setSelectedFiles(results.map(r => r.name));
     if (results.length > 0) {
       onFilesLoaded(results);
     } else {
       console.warn("[FileUploader] No valid HTML files found in selection");
+      setSelectedFiles([]);
     }
   }, [onFilesLoaded]);
 
@@ -100,10 +110,20 @@ export default function FileUploader({ onFilesLoaded }: FileUploaderProps) {
             ou clique para selecionar — arquivos <code className="text-[hsl(var(--color-info))] font-mono text-xs">.html</code> gerados pelo VBS
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 text-xs text-muted-foreground">
           <span className="px-2 py-1 rounded bg-muted">Múltiplos arquivos suportados</span>
-          <span className="px-2 py-1 rounded bg-muted">\\192.168.0.10\inventario</span>
+          <span className="px-2 py-1 rounded bg-muted">Selecione os HTMLs em Área de Trabalho\MÁQUINAS_HTML</span>
         </div>
+        {selectedFiles.length > 0 && (
+          <div className="mt-4 text-sm text-foreground">
+            <p className="font-semibold">Arquivos prontos para processar ({selectedFiles.length}):</p>
+            <ul className="mt-2 text-xs text-muted-foreground list-disc list-inside space-y-1 max-h-24 overflow-y-auto text-left">
+              {selectedFiles.map(name => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

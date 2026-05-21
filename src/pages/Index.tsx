@@ -4,8 +4,9 @@ import { toast } from "sonner";
 import Header from "@/components/layout/Header";
 import MachineCard from "@/components/features/MachineCard";
 import FileUploader from "@/components/features/FileUploader";
+import { ScrollArea } from "@/components/ui/area-de-rolagem";
 import { parseInventoryHTML, loadInventories, saveInventories, removeInventory } from "@/lib/parseInventory";
-import type { MachineInventory } from "@/types/inventory";
+import type { MachineInventory } from "@/types/inventario";
 import { Search, Server, HardDrive, Monitor, Activity, ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import heroBg from "@/assets/hero-bg.jpg";
 
@@ -70,6 +71,7 @@ export default function Index() {
   }, [machines, search, filterOS, filterStatus, sortBy]);
 
   const handleFilesLoaded = (files: Array<{ name: string; content: string }>) => {
+    console.log("[Index] handleFilesLoaded called with", files.length, "files");
     const current = loadInventories();
     const newMachines: MachineInventory[] = [];
     let updated = 0;
@@ -77,6 +79,7 @@ export default function Index() {
     let errors = 0;
     files.forEach(({ name, content }) => {
       try {
+        console.log(`[Index] Processing file: ${name}, size: ${content.length}`);
         if (!content || content.length < 100) {
           console.warn("[Index] File too small or empty:", name);
           toast.error(`Arquivo vazio ou inválido: ${name}`);
@@ -84,6 +87,7 @@ export default function Index() {
           return;
         }
         const parsed = parseInventoryHTML(content, name);
+        console.log(`[Index] Parsed machine: ${parsed.machineName}, IP: ${parsed.primaryIP}`);
         const existIdx = current.findIndex(m => m.machineName === parsed.machineName);
         if (existIdx >= 0) {
           current[existIdx] = parsed;
@@ -98,12 +102,20 @@ export default function Index() {
       }
     });
 
+    console.log(`[Index] Summary: new=${newMachines.length}, updated=${updated}, errors=${errors}`);
     const result = [...current, ...newMachines];
-    saveInventories(result);
     setMachines(result);
-    setShowUploader(false);
+    const hadSuccess = newMachines.length > 0 || updated > 0;
+    if (hadSuccess) {
+      setShowUploader(false);
+    }
 
-    if (newMachines.length > 0 || updated > 0) {
+    const saved = saveInventories(result);
+    if (!saved) {
+      toast.error("Não foi possível salvar os dados no navegador. Limpe o armazenamento local ou remova registros antigos.");
+    }
+
+    if (hadSuccess) {
       toast.success(`${newMachines.length} adicionada(s), ${updated} atualizada(s)`);
     } else if (errors === 0 && files.length > 0) {
       toast.info("Arquivos processados mas nenhum dado extraído — verifique o formato.");
@@ -337,15 +349,30 @@ export default function Index() {
 
         {/* Grid */}
         {filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filtered.map(machine => (
-              <MachineCard
-                key={machine.id}
-                machine={machine}
-                onClick={() => navigate(`/machine/${machine.id}`)}
-                onDelete={() => handleDelete(machine.id)}
-              />
-            ))}
+          <div className="card-surface p-4 mb-6 border border-border rounded-3xl">
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Inventários carregados</p>
+                <p className="text-xs text-muted-foreground">
+                  Use a barra de rolagem para navegar pelos cards sem estender demais a página.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Exibindo <span className="font-semibold text-foreground">{filtered.length}</span> de <span className="font-semibold text-foreground">{machines.length}</span>
+              </p>
+            </div>
+            <ScrollArea className="h-[62vh] min-h-[28rem] rounded-3xl border border-border">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
+                {filtered.map(machine => (
+                  <MachineCard
+                    key={machine.id}
+                    machine={machine}
+                    onClick={() => navigate(`/machine/${machine.id}`)}
+                    onDelete={() => handleDelete(machine.id)}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
           </div>
         )}
 

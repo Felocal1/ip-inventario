@@ -1,5 +1,5 @@
 import { Monitor, Server, Wifi, HardDrive, Cpu, Package, Activity, Tag } from "lucide-react";
-import type { MachineInventory } from "@/types/inventory";
+import type { MachineInventory } from "@/types/inventario";
 
 interface MachineCardProps {
   machine: MachineInventory;
@@ -71,14 +71,21 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
             <Monitor className="w-5 h-5 text-[hsl(var(--color-info))]" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-foreground truncate text-base leading-tight">{machine.machineName}</h3>
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getOSBadgeColor(machine.osName)}`}>
-                {getOSShort(machine.osName)}
-              </span>
-              {machine.manufacturer && (
-                <span className="text-[10px] text-muted-foreground">{machine.manufacturer}</span>
-              )}
+            <div className="flex flex-col gap-2">
+              <div>
+                <h3 className="font-bold text-foreground truncate text-base leading-tight">{machine.machineName}</h3>
+                <p className="mt-2 text-sm font-semibold text-[hsl(var(--color-info))] truncate">
+                  IP principal: {machine.primaryIP || "Não identificado"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getOSBadgeColor(machine.osName)}`}>
+                  {getOSShort(machine.osName)}
+                </span>
+                {machine.manufacturer && (
+                  <span className="text-[10px] text-muted-foreground">{machine.manufacturer}</span>
+                )}
+              </div>
             </div>
           </div>
           <span className={`shrink-0 text-[10px] px-2 py-1 rounded-lg font-medium ${isToday ? "text-emerald-400 bg-emerald-400/10 border border-emerald-400/20" : "text-muted-foreground bg-muted border border-border"}`}>

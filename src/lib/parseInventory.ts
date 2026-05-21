@@ -1,12 +1,19 @@
 import type {
   MachineInventory, NetworkAdapter, TcpConfig,
   DiskDetail, Partition, LocalUser, Service, Share, MemorySlot
-} from "@/types/inventory";
+} from "@/types/inventario";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function stripTags(html: string): string {
   return html.replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractFirstIPv4(html: string): string {
+  const matches = Array.from(html.matchAll(/(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}/g));
+  if (!matches.length) return "";
+  const candidate = matches.map(m => m[0]).find(ip => ip !== "127.0.0.1" && ip !== "0.0.0.0");
+  return candidate || "";
 }
 
 /** Extract text between two literal string markers (case-insensitive indexOf) */
@@ -239,7 +246,7 @@ function parseTCP(html: string): { configs: TcpConfig[]; primaryIP: string } {
     });
   });
 
-  const resolvedIP = primaryIP || configs.find(c => c.ip && c.ip !== "0.0.0.0")?.ip || "";
+  const resolvedIP = primaryIP || configs.find(c => c.ip && c.ip !== "0.0.0.0")?.ip || extractFirstIPv4(html) || "";
   return { configs, primaryIP: resolvedIP };
 }
 
@@ -253,7 +260,7 @@ function parseDisks(html: string): { details: DiskDetail[]; partitions: Partitio
     const blocks = diskSection.split(/<ul>/i).filter(b => b.includes("Caption") || b.includes("PHYSICALDRIVE"));
     blocks.forEach(block => {
       const getField = (key: string) => {
-        const m = block.match(new RegExp(`<b>${key}[^<]*<\/b>\\s*([^<\n]+)`, "i"));
+        const m = block.match(new RegExp(`<b>${key}[^<]*</b>\\s*([^<\\n]+)`, "i"));
         return m ? m[1].trim() : "";
       };
       const caption = getField("Caption");
@@ -439,8 +446,14 @@ export function parseInventoryHTML(html: string, fileName: string): MachineInven
   };
 }
 
-export function saveInventories(inventories: MachineInventory[]): void {
-  localStorage.setItem("itinventory_machines", JSON.stringify(inventories));
+export function saveInventories(inventories: MachineInventory[]): boolean {
+  try {
+    localStorage.setItem("itinventory_machines", JSON.stringify(inventories));
+    return true;
+  } catch (err) {
+    console.warn("[Storage] saveInventories failed:", err);
+    return false;
+  }
 }
 
 export function loadInventories(): MachineInventory[] {
@@ -455,6 +468,10 @@ export function loadInventories(): MachineInventory[] {
 export function removeInventory(id: string): MachineInventory[] {
   const all = loadInventories();
   const updated = all.filter(m => m.id !== id);
-  saveInventories(updated);
+  try {
+    saveInventories(updated);
+  } catch {
+    // ignore storage failures during removal, preserve app state
+  }
   return updated;
 }
