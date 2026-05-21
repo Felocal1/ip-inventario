@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import Header from "@/components/layout/Cabecalho";
@@ -9,8 +9,12 @@ import { parseInventoryHTML, loadInventories, saveInventories, removeInventory }
 import type { MachineInventory } from "@/types/inventory";
 import { Search, Server, HardDrive, Monitor, Activity, ChevronDown, SlidersHorizontal, X, Wifi } from "lucide-react";
 import heroBg from "@/assets/herói-bg.jpg";
-import initialMachines from "@/data/maquinas_iniciais.json";
+// Removed static import of large JSON. We'll fetch it at runtime.
 
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import Header from "@/components/layout/Cabecalho";
+import MachineCard from "@/components/features/MachineCard";
 type FilterOS = "all" | "win11" | "win10" | "server" | "other";
 type FilterStatus = "all" | "today";
 type SortBy = "name" | "date" | "ip" | "ram";
@@ -25,7 +29,7 @@ export default function Index() {
       return [];
     }
   });
-
+  const [preloadedMachines, setPreloadedMachines] = useState<MachineInventory[]>([]);
   const [search, setSearch] = useState("");
   const [showUploader, setShowUploader] = useState(false);
   const [filterOS, setFilterOS] = useState<FilterOS>("all");
@@ -34,10 +38,36 @@ export default function Index() {
   const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
 
+  // Fetch preloaded inventory JSON from public folder, with fallback to raw GitHub if not found
+  useEffect(() => {
+      const fallbackUrl = "https://raw.githubusercontent.com/Felocal1/ip-inventario/master/public/maquinas_iniciais.json";
+      fetch("/maquinas_iniciais.json")
+        .then((res) => {
+          if (!res.ok) {
+            console.warn(`Primary JSON not found (${res.status}), falling back to GitHub raw URL`);
+            return fetch(fallbackUrl);
+          }
+          return res;
+        })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`Failed to load preloaded machines: ${res.status}`);
+          }
+          return res.json();
+        })
+        .then((data: MachineInventory[]) => {
+          console.log('Preloaded machines loaded:', data.length);
+          setPreloadedMachines(data);
+        })
+        .catch((err) => {
+          console.error('Failed to load preloaded machines', err);
+        });
+  }, []);
+
+
   const activePreloaded = useMemo(() => {
-    const initialList = initialMachines as MachineInventory[];
-    return initialList.filter(m => !deletedPreloaded.includes(m.id));
-  }, [deletedPreloaded]);
+    return preloadedMachines.filter(m => !deletedPreloaded.includes(m.id));
+  }, [preloadedMachines, deletedPreloaded]);
 
   const filterAndSortList = (list: MachineInventory[]) => {
     let result = [...list];
