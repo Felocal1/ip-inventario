@@ -6,6 +6,7 @@ import MachineCard from "@/components/features/MachineCard";
 import FileUploader from "@/components/features/FileUploader";
 import { ScrollArea } from "@/components/ui/area-de-rolagem";
 import { parseInventoryHTML, loadInventories, saveInventories, removeInventory } from "@/lib/parseInventory";
+import { useAutoLoadInventories } from "@/hooks/use-auto-load-inventories";
 import type { MachineInventory } from "@/types/inventario";
 import { Search, Server, HardDrive, Monitor, Activity, ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import heroBg from "@/assets/hero-bg.jpg";
@@ -23,6 +24,9 @@ export default function Index() {
   const [sortBy, setSortBy] = useState<SortBy>("date");
   const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
+
+  // Carregar inventários automaticamente se localStorage estiver vazio
+  useAutoLoadInventories();
 
   const filtered = useMemo(() => {
     let list = [...machines];
