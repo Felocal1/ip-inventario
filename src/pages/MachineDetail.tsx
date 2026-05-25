@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { loadInventories } from "@/lib/parseInventory";
-import Header from "@/components/layout/Header";
+import Header from "@/components/layout/Cabecalho";
 import {
   ArrowLeft, Monitor, Cpu, Server, Wifi, HardDrive,
   Users, Package, Activity, Share2, Printer, ChevronDown, ChevronRight, Search
 } from "lucide-react";
-import type { MachineInventory, Service } from "@/types/inventario";
+import type { MachineInventory, Service } from "@/types/inventory";
+import initialMachines from "@/data/maquinas_iniciais.json";
 
 function SectionWrapper({ title, icon, children, defaultOpen = true }: {
   title: string; icon: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean
@@ -63,7 +64,12 @@ export default function MachineDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const machines = loadInventories();
-  const machine = machines.find(m => m.id === id);
+  const machine = useMemo(() => {
+    const uploaded = machines.find(m => m.id === id);
+    if (uploaded) return uploaded;
+    const initialList = initialMachines as MachineInventory[];
+    return initialList.find(m => m.id === id);
+  }, [machines, id]);
 
   const [svcSearch, setSvcSearch] = useState("");
   const [swSearch, setSwSearch] = useState("");

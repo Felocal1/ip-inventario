@@ -1,15 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import Header from "@/components/layout/Header";
+import Header from "@/components/layout/Cabecalho";
 import MachineCard from "@/components/features/MachineCard";
 import FileUploader from "@/components/features/FileUploader";
-import { ScrollArea } from "@/components/ui/area-de-rolagem";
+import MachineIPCard from "@/components/features/MachineIPCard";
 import { parseInventoryHTML, loadInventories, saveInventories, removeInventory } from "@/lib/parseInventory";
-import { useAutoLoadInventories } from "@/hooks/use-auto-load-inventories";
-import type { MachineInventory } from "@/types/inventario";
-import { Search, Server, HardDrive, Monitor, Activity, ChevronDown, SlidersHorizontal, X } from "lucide-react";
-import heroBg from "@/assets/hero-bg.jpg";
+import type { MachineInventory } from "@/types/inventory";
+import { Search, Server, HardDrive, Monitor, Activity, ChevronDown, SlidersHorizontal, X, Wifi } from "lucide-react";
+import heroBg from "@/assets/herói-bg.jpg";
 
 type FilterOS = "all" | "win11" | "win10" | "server" | "other";
 type FilterStatus = "all" | "today";
@@ -17,6 +16,15 @@ type SortBy = "name" | "date" | "ip" | "ram";
 
 export default function Index() {
   const [machines, setMachines] = useState<MachineInventory[]>(loadInventories);
+  const [deletedPreloaded, setDeletedPreloaded] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("itinventory_deleted_preloaded");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [preloadedMachines, setPreloadedMachines] = useState<MachineInventory[]>([]);
   const [search, setSearch] = useState("");
   const [showUploader, setShowUploader] = useState(false);
   const [filterOS, setFilterOS] = useState<FilterOS>("all");
@@ -25,16 +33,38 @@ export default function Index() {
   const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
 
-  // Carregar inventários automaticamente se localStorage estiver vazio
-  useAutoLoadInventories();
+  // Fetch the preloaded inventory JSON from the public folder (served by Vercel/local dev)
+  useEffect(() => {
+    const localUrl = "/maquinas_iniciais.json";
+    fetch(localUrl)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Failed to load preloaded machines: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data: MachineInventory[]) => {
+        console.log('✅ Preloaded machines loaded:', data.length);
+        setPreloadedMachines(data);
+      })
+      .catch((err) => {
+        console.error('❌ Failed to load preloaded machines', err);
+        toast.error('Não foi possível carregar os dados das máquinas pré‑carregadas.');
+      });
+  }, []);
 
-  const filtered = useMemo(() => {
-    let list = [...machines];
+
+  const activePreloaded = useMemo(() => {
+    return preloadedMachines.filter(m => !deletedPreloaded.includes(m.id));
+  }, [preloadedMachines, deletedPreloaded]);
+
+  const filterAndSortList = (list: MachineInventory[]) => {
+    let result = [...list];
 
     // Search
     if (search) {
       const q = search.toLowerCase();
-      list = list.filter(m =>
+      result = result.filter(m =>
         m.machineName.toLowerCase().includes(q) ||
         m.osName.toLowerCase().includes(q) ||
         m.primaryIP.includes(q) ||
@@ -47,7 +77,7 @@ export default function Index() {
 
     // OS filter
     if (filterOS !== "all") {
-      list = list.filter(m => {
+      result = result.filter(m => {
         const os = m.osName.toLowerCase();
         if (filterOS === "win11") return os.includes("11");
         if (filterOS === "win10") return os.includes("10");
@@ -59,11 +89,11 @@ export default function Index() {
 
     // Status filter
     if (filterStatus === "today") {
-      list = list.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString());
+      result = result.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString());
     }
 
     // Sort
-    list.sort((a, b) => {
+    result.sort((a, b) => {
       if (sortBy === "name") return a.machineName.localeCompare(b.machineName);
       if (sortBy === "date") return new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime();
       if (sortBy === "ip") return a.primaryIP.localeCompare(b.primaryIP);
@@ -71,11 +101,13 @@ export default function Index() {
       return 0;
     });
 
-    return list;
-  }, [machines, search, filterOS, filterStatus, sortBy]);
+    return result;
+  };
+
+  const filteredUploaded = useMemo(() => filterAndSortList(machines), [machines, search, filterOS, filterStatus, sortBy]);
+  const filteredPreloaded = useMemo(() => filterAndSortList(activePreloaded), [activePreloaded, search, filterOS, filterStatus, sortBy]);
 
   const handleFilesLoaded = (files: Array<{ name: string; content: string }>) => {
-    console.log("[Index] handleFilesLoaded called with", files.length, "files");
     const current = loadInventories();
     const newMachines: MachineInventory[] = [];
     let updated = 0;
@@ -83,7 +115,6 @@ export default function Index() {
     let errors = 0;
     files.forEach(({ name, content }) => {
       try {
-        console.log(`[Index] Processing file: ${name}, size: ${content.length}`);
         if (!content || content.length < 100) {
           console.warn("[Index] File too small or empty:", name);
           toast.error(`Arquivo vazio ou inválido: ${name}`);
@@ -91,7 +122,6 @@ export default function Index() {
           return;
         }
         const parsed = parseInventoryHTML(content, name);
-        console.log(`[Index] Parsed machine: ${parsed.machineName}, IP: ${parsed.primaryIP}`);
         const existIdx = current.findIndex(m => m.machineName === parsed.machineName);
         if (existIdx >= 0) {
           current[existIdx] = parsed;
@@ -106,20 +136,12 @@ export default function Index() {
       }
     });
 
-    console.log(`[Index] Summary: new=${newMachines.length}, updated=${updated}, errors=${errors}`);
     const result = [...current, ...newMachines];
+    saveInventories(result);
     setMachines(result);
-    const hadSuccess = newMachines.length > 0 || updated > 0;
-    if (hadSuccess) {
-      setShowUploader(false);
-    }
+    setShowUploader(false);
 
-    const saved = saveInventories(result);
-    if (!saved) {
-      toast.error("Não foi possível salvar os dados no navegador. Limpe o armazenamento local ou remova registros antigos.");
-    }
-
-    if (hadSuccess) {
+    if (newMachines.length > 0 || updated > 0) {
       toast.success(`${newMachines.length} adicionada(s), ${updated} atualizada(s)`);
     } else if (errors === 0 && files.length > 0) {
       toast.info("Arquivos processados mas nenhum dado extraído — verifique o formato.");
@@ -132,6 +154,13 @@ export default function Index() {
     toast.success("Inventário removido");
   };
 
+  const handlePreloadedDelete = (id: string) => {
+    const updated = [...deletedPreloaded, id];
+    setDeletedPreloaded(updated);
+    localStorage.setItem("itinventory_deleted_preloaded", JSON.stringify(updated));
+    toast.success("Inventário da rede ocultado do painel");
+  };
+
   const clearFilters = () => {
     setSearch("");
     setFilterOS("all");
@@ -142,13 +171,27 @@ export default function Index() {
   const hasActiveFilters = search || filterOS !== "all" || filterStatus !== "all" || sortBy !== "date";
 
   // Stats
-  const todayCount = machines.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString()).length;
-  const totalRunning = machines.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "running").length, 0);
-  const totalStopped = machines.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "stopped").length, 0);
-  const totalPartitions = machines.reduce((a, m) => a + m.partitions.length, 0);
+  const totalMachinesCount = machines.length + activePreloaded.length;
+  const todayCount = machines.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString()).length +
+                     activePreloaded.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString()).length;
 
-  const win11Count = machines.filter(m => m.osName.toLowerCase().includes("11")).length;
-  const win10Count = machines.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length;
+  const totalRunning = machines.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "running").length, 0) +
+                       activePreloaded.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "running").length, 0);
+
+  const totalStopped = machines.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "stopped").length, 0) +
+                       activePreloaded.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "stopped").length, 0);
+
+  const totalPartitions = machines.reduce((a, m) => a + m.partitions.length, 0) +
+                           activePreloaded.reduce((a, m) => a + m.partitions.length, 0);
+
+  const win11Count = machines.filter(m => m.osName.toLowerCase().includes("11")).length +
+                     activePreloaded.filter(m => m.osName.toLowerCase().includes("11")).length;
+
+  const win10Count = machines.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length +
+                     activePreloaded.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length;
+
+  const winServerCount = machines.filter(m => m.osName.toLowerCase().includes("server")).length +
+                         activePreloaded.filter(m => m.osName.toLowerCase().includes("server")).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -180,26 +223,26 @@ export default function Index() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:w-auto">
               <StatCard
                 icon={<Monitor className="w-5 h-5" />}
-                value={machines.length}
+                value={totalMachinesCount}
                 label="Total de Máquinas"
                 sub={`${todayCount} hoje`}
                 color="cyan"
                 featured
               />
               <StatCard icon={<Activity className="w-4 h-4" />} value={totalRunning} label="Serviços Ativos" sub={`${totalStopped} parados`} color="green" />
-              <StatCard icon={<HardDrive className="w-4 h-4" />} value={totalPartitions} label="Partições" sub={`${machines.reduce((a,m) => a + m.diskDetails.length, 0)} discos`} color="blue" />
-              <StatCard icon={<Server className="w-4 h-4" />} value={machines.reduce((a,m) => a + m.softwareList.length, 0)} label="Softwares" sub="total catalogados" color="purple" />
+              <StatCard icon={<HardDrive className="w-4 h-4" />} value={totalPartitions} label="Partições" sub={`${machines.reduce((a,m) => a + m.diskDetails.length, 0) + activePreloaded.reduce((a,m) => a + m.diskDetails.length, 0)} discos`} color="blue" />
+              <StatCard icon={<Server className="w-4 h-4" />} value={machines.reduce((a,m) => a + m.softwareList.length, 0) + activePreloaded.reduce((a,m) => a + m.softwareList.length, 0)} label="Softwares" sub="total catalogados" color="purple" />
             </div>
           </div>
 
           {/* OS breakdown mini */}
-          {machines.length > 0 && (
+          {totalMachinesCount > 0 && (
             <div className="flex flex-wrap items-center gap-3 mt-5 pt-5 border-t border-border/40">
               <span className="text-xs text-muted-foreground">Sistemas:</span>
               {win11Count > 0 && <OSTick label="Windows 11" count={win11Count} color="violet" onClick={() => setFilterOS(f => f === "win11" ? "all" : "win11")} active={filterOS === "win11"} />}
               {win10Count > 0 && <OSTick label="Windows 10" count={win10Count} color="blue" onClick={() => setFilterOS(f => f === "win10" ? "all" : "win10")} active={filterOS === "win10"} />}
-              {machines.filter(m => m.osName.toLowerCase().includes("server")).length > 0 && (
-                <OSTick label="Windows Server" count={machines.filter(m => m.osName.toLowerCase().includes("server")).length} color="orange" onClick={() => setFilterOS(f => f === "server" ? "all" : "server")} active={filterOS === "server"} />
+              {winServerCount > 0 && (
+                <OSTick label="Windows Server" count={winServerCount} color="orange" onClick={() => setFilterOS(f => f === "server" ? "all" : "server")} active={filterOS === "server"} />
               )}
             </div>
           )}
@@ -312,23 +355,8 @@ export default function Index() {
           </div>
         )}
 
-        {/* Results header */}
-        {machines.length > 0 && (
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-muted-foreground">
-              Exibindo <span className="text-foreground font-semibold">{filtered.length}</span>
-              {filtered.length !== machines.length && <span> de <span className="text-foreground font-semibold">{machines.length}</span></span>}
-              {" "}máquina{filtered.length !== 1 ? "s" : ""}
-            </p>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <ChevronDown className="w-3 h-3" />
-              <span>Clique em uma máquina para ver detalhes</span>
-            </div>
-          </div>
-        )}
-
-        {/* Empty state */}
-        {machines.length === 0 && !showUploader && (
+        {/* Empty state (when absolutely no machines exist) */}
+        {totalMachinesCount === 0 && !showUploader && (
           <div className="text-center py-20">
             <div className="w-24 h-24 rounded-3xl bg-[hsl(var(--color-surface-2))] border border-border flex items-center justify-center mx-auto mb-5">
               <Monitor className="w-12 h-12 text-muted-foreground" />
@@ -351,23 +379,21 @@ export default function Index() {
           </div>
         )}
 
-        {/* Grid */}
-        {filtered.length > 0 && (
-          <div className="card-surface p-4 mb-6 border border-border rounded-3xl">
-            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Inventários carregados</p>
-                <p className="text-xs text-muted-foreground">
-                  Use a barra de rolagem para navegar pelos cards sem estender demais a página.
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Exibindo <span className="font-semibold text-foreground">{filtered.length}</span> de <span className="font-semibold text-foreground">{machines.length}</span>
-              </p>
+        {/* Uploaded Machines Section */}
+        {machines.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Server className="w-4 h-4 text-[hsl(var(--color-info))]" />
+                Estações Carregadas Manualmente
+              </h2>
+              <span className="text-xs text-muted-foreground bg-[hsl(var(--color-surface-2))] border border-border px-2.5 py-1 rounded-full font-mono">
+                {filteredUploaded.length} de {machines.length}
+              </span>
             </div>
-            <ScrollArea className="h-[62vh] min-h-[28rem] rounded-3xl border border-border">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-                {filtered.map(machine => (
+            {filteredUploaded.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredUploaded.map(machine => (
                   <MachineCard
                     key={machine.id}
                     machine={machine}
@@ -376,11 +402,61 @@ export default function Index() {
                   />
                 ))}
               </div>
-            </ScrollArea>
+            ) : (
+              <div className="card-surface p-6 text-center text-sm text-muted-foreground">
+                Nenhuma máquina carregada manualmente corresponde aos filtros.
+              </div>
+            )}
           </div>
         )}
 
-        {filtered.length === 0 && machines.length > 0 && (
+        {/* Preloaded Rede Section */}
+        {activePreloaded.length > 0 && (
+          <div className="mt-8 border-t border-border/40 pt-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <Wifi className="w-4 h-4 text-[hsl(var(--color-info))] animate-pulse" />
+                  Estações Coletadas da Rede (Área de Trabalho)
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Cartões de estações pré-carregadas com destaque para o endereço IP
+                </p>
+              </div>
+              <span className="self-start sm:self-center text-xs text-muted-foreground bg-[hsl(var(--color-surface-2))] border border-border px-2.5 py-1 rounded-full font-mono">
+                {filteredPreloaded.length} de {activePreloaded.length}
+              </span>
+            </div>
+
+            {filteredPreloaded.length > 0 ? (
+              <div className="border border-border/50 rounded-2xl bg-[hsl(var(--color-surface-1))]/50 p-4">
+                {/* Scrollable grid container */}
+                <div className="max-h-[600px] overflow-y-auto pr-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-2">
+                    {filteredPreloaded.map(machine => (
+                      <MachineIPCard
+                        key={machine.id}
+                        machine={machine}
+                        onClick={() => navigate(`/machine/${machine.id}`)}
+                        onDelete={() => handlePreloadedDelete(machine.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="card-surface p-12 text-center">
+                <Wifi className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma máquina da rede corresponde aos filtros aplicados.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Global Empty Results Fallback */}
+        {totalMachinesCount > 0 && filteredUploaded.length === 0 && filteredPreloaded.length === 0 && (
           <div className="text-center py-16">
             <p className="text-muted-foreground mb-3">Nenhuma máquina encontrada para "<span className="text-foreground">{search}</span>"</p>
             <button onClick={clearFilters} className="text-xs text-[hsl(var(--color-info))] hover:underline">Limpar filtros</button>

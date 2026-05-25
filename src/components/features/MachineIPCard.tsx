@@ -1,7 +1,7 @@
-import { Monitor, Server, Wifi, HardDrive, Cpu, Package, Activity, Tag } from "lucide-react";
+import { Monitor, Server, Wifi, Cpu, Package, Activity, Tag } from "lucide-react";
 import type { MachineInventory } from "@/types/inventory";
 
-interface MachineCardProps {
+interface MachineIPCardProps {
   machine: MachineInventory;
   onClick: () => void;
   onDelete: () => void;
@@ -38,7 +38,7 @@ function getOSShort(osName: string): string {
   return osName.slice(0, 8) || "—";
 }
 
-export default function MachineCard({ machine, onClick, onDelete }: MachineCardProps) {
+export default function MachineIPCard({ machine, onClick, onDelete }: MachineIPCardProps) {
   const uploadDate = new Date(machine.uploadDate);
   const isToday = new Date().toDateString() === uploadDate.toDateString();
   const runningServices = machine.services.filter(s => s.status.toLowerCase() === "running").length;
@@ -53,7 +53,7 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
       onKeyDown={e => e.key === "Enter" && onClick()}
     >
       {/* Top color accent */}
-      <div className="h-1 w-full bg-gradient-to-r from-[hsl(var(--color-info))/60] to-violet-500/40" />
+      <div className="h-1 w-full bg-gradient-to-r from-[hsl(var(--color-info))] to-emerald-500/60" />
 
       {/* Delete button */}
       <button
@@ -65,24 +65,24 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
       </button>
 
       <div className="p-5 flex flex-col gap-4 flex-1">
-        {/* Header */}
+        {/* Header with IP as PRIMARY information */}
         <div className="flex items-start gap-3">
           <div className="w-11 h-11 rounded-xl bg-[hsl(var(--color-info))/12] border border-[hsl(var(--color-info))/20] flex items-center justify-center shrink-0">
-            <Monitor className="w-5 h-5 text-[hsl(var(--color-info))]" />
+            <Wifi className="w-5 h-5 text-[hsl(var(--color-info))]" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-foreground truncate text-base leading-tight">{machine.machineName}</h3>
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getOSBadgeColor(machine.osName)}`}>
-                {getOSShort(machine.osName)}
-              </span>
-              {machine.manufacturer && (
-                <span className="text-[10px] text-muted-foreground">{machine.manufacturer}</span>
-              )}
-            </div>
+            {/* IP Address is the most prominent text now */}
+            <h3 className="font-bold text-foreground text-lg tracking-tight truncate leading-none">
+              {machine.primaryIP || "Sem Endereço IP"}
+            </h3>
+            {/* Machine name as secondary info */}
+            <p className="text-xs text-muted-foreground font-mono mt-1.5 truncate flex items-center gap-1.5">
+              <Monitor className="w-3.5 h-3.5 inline text-muted-foreground/60" />
+              <span>{machine.machineName}</span>
+            </p>
           </div>
-          <span className={`shrink-0 text-[10px] px-2 py-1 rounded-lg font-medium ${isToday ? "text-emerald-400 bg-emerald-400/10 border border-emerald-400/20" : "text-muted-foreground bg-muted border border-border"}`}>
-            {isToday ? "● Hoje" : uploadDate.toLocaleDateString("pt-BR")}
+          <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getOSBadgeColor(machine.osName)}`}>
+            {getOSShort(machine.osName)}
           </span>
         </div>
 
@@ -91,7 +91,7 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
           <InfoItem icon={<Cpu className="w-3.5 h-3.5" />} label="CPU"
             value={machine.processorName?.replace(/\(R\)|\(TM\)/g, "").split(" ").slice(0, 5).join(" ") || machine.processorFamily?.split(" ").slice(0, 3).join(" ") || "—"} />
           <InfoItem icon={<Server className="w-3.5 h-3.5" />} label="RAM" value={formatMB(machine.totalMemoryMB)} />
-          <InfoItem icon={<Wifi className="w-3.5 h-3.5" />} label="IP" value={machine.primaryIP || "—"} />
+          <InfoItem icon={<Monitor className="w-3.5 h-3.5" />} label="Fabricante" value={machine.manufacturer || "—"} />
           <InfoItem icon={<Tag className="w-3.5 h-3.5" />} label="Service Tag" value={machine.serviceTag || machine.model || "—"} />
         </div>
 
@@ -99,7 +99,7 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
         {machine.partitions.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Armazenamento</p>
-            {machine.partitions.slice(0, 3).map((p, i) => {
+            {machine.partitions.slice(0, 2).map((p, i) => {
               const total = parseInt(p.sizeMB, 10);
               const free = parseInt(p.freeSpaceMB, 10);
               const usedPct = total && free ? Math.round(((total - free) / total) * 100) : 0;
@@ -133,21 +133,17 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             <span className="text-xs text-emerald-400 font-medium">{runningServices}</span>
-            <span className="text-[10px] text-muted-foreground">ativos</span>
+            <span className="text-[10px] text-muted-foreground font-normal">ativos</span>
           </div>
           <div className="w-px h-3 bg-border" />
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
             <span className="text-xs text-red-400 font-medium">{stoppedServices}</span>
-            <span className="text-[10px] text-muted-foreground">parados</span>
+            <span className="text-[10px] text-muted-foreground font-normal font-normal">parados</span>
           </div>
           <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
             <Package className="w-3 h-3" />
             <span className="text-[10px]">{machine.softwareList.length} apps</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Activity className="w-3 h-3" />
-            <span className="text-[10px]">{machine.services.length} serv.</span>
           </div>
         </div>
       </div>
@@ -157,7 +153,7 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
 
 function InfoItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-[hsl(var(--color-surface-2))] rounded-lg p-2.5">
+    <div className="bg-[hsl(var(--color-surface-2))] rounded-lg p-2">
       <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
         <span className="text-[hsl(var(--color-info))/70]">{icon}</span>
         <span className="text-[9px] uppercase tracking-widest font-semibold">{label}</span>

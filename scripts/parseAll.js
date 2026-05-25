@@ -1,16 +1,13 @@
-import type {
-  MachineInventory, NetworkAdapter, TcpConfig,
-  DiskDetail, Partition, LocalUser, Service, Share, MemorySlot
-} from "@/types/inventory";
+const fs = require('fs');
+const path = require('path');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function stripTags(html: string): string {
+function stripTags(html) {
   return html.replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Extract text between two literal string markers (case-insensitive indexOf) */
-function extractBetween(html: string, start: string, end: string): string {
+function extractBetween(html, start, end) {
   const lo = html.toLowerCase();
   const startLo = start.toLowerCase();
   const endLo = end.toLowerCase();
@@ -23,9 +20,7 @@ function extractBetween(html: string, start: string, end: string): string {
   return after.slice(0, endIdx).trim();
 }
 
-/** Extract value from VBS comment marker: <!PREFIXvalueSUFFIX> */
-function extractComment(html: string, prefix: string, suffix: string): string {
-  // Build a regex that's tolerant of surrounding whitespace/newlines
+function extractComment(html, prefix, suffix) {
   try {
     const regex = new RegExp(`<!${prefix}([\\s\\S]*?)${suffix}>`, "i");
     const m = html.match(regex);
@@ -35,29 +30,24 @@ function extractComment(html: string, prefix: string, suffix: string): string {
   }
 }
 
-/** Extract all <td> cell texts from a <tr> row */
-function parseTdRow(row: string): string[] {
+function parseTdRow(row) {
   return (row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || []).map(c => stripTags(c).trim());
 }
 
 // ─── Section parsers ──────────────────────────────────────────────────────────
 
-function parseMachineName(html: string, fileName: string): string {
-  // Pattern: <!WKS<name>Fim_WKS>
+function parseMachineName(html, fileName) {
   const m = html.match(/<!WKS([\s\S]*?)Fim_WKS>/i);
   if (m && m[1].trim()) return m[1].trim();
 
-  // Fallback: look for H1 with machine name
   const h1 = html.match(/<H1[^>]*><b>([\s\S]*?)<\/b>/i);
   if (h1) {
-    // Usually: "(Ives Marcus) - Inventario do Computador:" or just the name
     const raw = stripTags(h1[1]);
     const nameMatch = raw.match(/:\s*(.+)/);
     if (nameMatch) return nameMatch[1].trim();
     return raw.trim();
   }
 
-  // Second H1 (machine name standalone)
   const h1s = [...html.matchAll(/<H1[^>]*>([\s\S]*?)<\/H1>/gi)];
   if (h1s.length >= 2) {
     const name = stripTags(h1s[1][1]).trim();
@@ -67,15 +57,13 @@ function parseMachineName(html: string, fileName: string): string {
   return fileName.replace(/\.html?$/i, "");
 }
 
-function parseOS(html: string) {
+function parseOS(html) {
   const osName = extractComment(html, "SO", "Fim_SO");
-
-  // Extract OS section
   const section = extractBetween(html, "name='#SO'", "name='#proc'");
   const text = stripTags(section);
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
 
-  const getVal = (key: string) => {
+  const getVal = (key) => {
     const line = lines.find(l => l.toLowerCase().includes(key.toLowerCase()));
     if (!line) return "";
     const parts = line.split(":");
@@ -94,8 +82,7 @@ function parseOS(html: string) {
   };
 }
 
-function parseProcessor(html: string) {
-  // Comment markers
+function parseProcessor(html) {
   const procNameComment = html.match(/<!Processador>([\s\S]*?)<!Fim_Proc>/i);
   const procName = procNameComment ? procNameComment[1].trim() : "";
 
@@ -114,14 +101,13 @@ function parseProcessor(html: string) {
   };
 }
 
-function parseBios(html: string) {
+function parseBios(html) {
   const manuMatch = html.match(/Fabricante\s*:\s*([^\n<]+)/i);
   const tagMatch = html.match(/Serie\/Service Tag\s*:\s*([^\n<]+)/i) || html.match(/Service Tag\s*:\s*([^\n<]+)/i);
   const modelRaw = html.match(/Modelo Equipamento\s*:\s*([\s\S]*?)(?:<\/pre>|<li>|<\/ul>)/i);
   const biosVerMatch = html.match(/BIOS Version\s*:\s*([^\n<]+)/i);
   const biosDateMatch = html.match(/Release Date\s*:\s*([^\n<]+)/i);
 
-  // Also try comment-style markers
   const manuComment = extractComment(html, "Fabricante>\\s*[\\s\\S]*?Fabricante\\s*:\\s*", "Fim_Fabricante");
   const serieComment = extractComment(html, "Serie>\\s*[\\s\\S]*?:\\s*", "Fim_Serie");
   const modelComment = extractComment(html, "Modelo>\\s*[\\s\\S]*?:\\s*", "Fim_Modelo");
@@ -135,20 +121,17 @@ function parseBios(html: string) {
   return { manufacturer, serviceTag, model, biosVersion, biosDate };
 }
 
-function parseMemory(html: string): { slots: MemorySlot[]; totalMB: number; pageFile: string; pageFileSize: string } {
-  const slots: MemorySlot[] = [];
+function parseMemory(html) {
+  const slots = [];
   let totalMB = 0;
 
-  // Use comment markers first
   const memComments = [...html.matchAll(/<!Memoria(\d+)Fim_Mem>/gi)];
   if (memComments.length > 0) {
     totalMB = memComments.reduce((acc, m) => acc + parseInt(m[1], 10), 0);
   }
 
-  // Parse physical memory entries
   const memSection = extractBetween(html, "emória", "rquivo de Pagina");
   if (memSection) {
-    // Split by "Physical Memory"
     const parts = memSection.split(/Physical Memory/i).slice(1);
     parts.forEach((part, i) => {
       const lines = part.split("\n").map(l => stripTags(l).trim()).filter(l => l.length > 0);
@@ -165,7 +148,6 @@ function parseMemory(html: string): { slots: MemorySlot[]; totalMB: number; page
     });
   }
 
-  // If still no total, try the comment markers
   if (totalMB === 0) {
     const fallback = memComments.reduce((acc, m) => acc + parseInt(m[1], 10), 0);
     if (fallback > 0) totalMB = fallback;
@@ -181,8 +163,8 @@ function parseMemory(html: string): { slots: MemorySlot[]; totalMB: number; page
   };
 }
 
-function parseNetwork(html: string): NetworkAdapter[] {
-  const adapters: NetworkAdapter[] = [];
+function parseNetwork(html) {
+  const adapters = [];
   const section = extractBetween(html, "name='#rede'", "name='#tcp'");
   if (!section) return adapters;
 
@@ -204,17 +186,14 @@ function parseNetwork(html: string): NetworkAdapter[] {
   return adapters;
 }
 
-function parseTCP(html: string): { configs: TcpConfig[]; primaryIP: string } {
-  const configs: TcpConfig[] = [];
-
-  // Primary IP from comment
+function parseTCP(html) {
+  const configs = [];
   const primaryIPMatch = html.match(/<!IP1([\d.]+)Fim_IP1>/i);
   const primaryIP = primaryIPMatch ? primaryIPMatch[1] : "";
 
   const tcpSection = extractBetween(html, "name='#tcp'", "name='#discos'");
   if (!tcpSection) return { configs, primaryIP };
 
-  // Split into per-adapter blocks by bgcolor header tables
   const blocks = tcpSection.split(/<table[^>]*bgcolor[^>]*>/i).slice(1);
 
   blocks.forEach(block => {
@@ -222,7 +201,6 @@ function parseTCP(html: string): { configs: TcpConfig[]; primaryIP: string } {
     const ipTypeMatch = block.match(/IP (Est[aá]tico|Din[aâ]mico)/i);
     const ipComment = block.match(/<!IP1([\s\S]*?)Fim_IP1>/i);
 
-    // Extract from following data table
     const ipMatch = block.match(/IP<\/td><td[^>]*>([\d.:a-fA-F]+)/i);
     const maskMatch = block.match(/Mascara<\/td><td[^>]*>([\d.]+)/i);
     const gwMatch = block.match(/Gateway<\/td><td[^>]*>([\d.:]+)/i);
@@ -243,23 +221,21 @@ function parseTCP(html: string): { configs: TcpConfig[]; primaryIP: string } {
   return { configs, primaryIP: resolvedIP };
 }
 
-function parseDisks(html: string): { details: DiskDetail[]; partitions: Partition[] } {
-  const details: DiskDetail[] = [];
-  const partitions: Partition[] = [];
+function parseDisks(html) {
+  const details = [];
+  const partitions = [];
 
-  // ── Disk details ──
   const diskSection = extractBetween(html, "etalhe dos Discos", "arti");
   if (diskSection) {
     const blocks = diskSection.split(/<ul>/i).filter(b => b.includes("Caption") || b.includes("PHYSICALDRIVE"));
     blocks.forEach(block => {
-      const getField = (key: string) => {
+      const getField = (key) => {
         const m = block.match(new RegExp(`<b>${key}[^<]*<\/b>\\s*([^<\n]+)`, "i"));
         return m ? m[1].trim() : "";
       };
       const caption = getField("Caption");
       const deviceId = getField("Device ID");
       if (caption || deviceId) {
-        // Size from comment
         const sizeComment = block.match(/<!Disco\d+(\d+)Fim_Disco\d+>/i);
         const sizeField = getField("Size").replace(/MB/i, "").trim();
         details.push({
@@ -275,13 +251,11 @@ function parseDisks(html: string): { details: DiskDetail[]; partitions: Partitio
     });
   }
 
-  // Also use global disk size comments
   const disk1 = html.match(/<!Disco1(\d+)Fim_Disco1>/i);
   const disk2 = html.match(/<!Disco2(\d+)Fim_Disco2>/i);
   if (disk1 && details[0] && !details[0].sizeMB) details[0].sizeMB = disk1[1];
   if (disk2 && details[1] && !details[1].sizeMB) details[1].sizeMB = disk2[1];
 
-  // ── Partitions ──
   const partSection = extractBetween(html, "arti", "nidade de CDROM");
   if (partSection) {
     const rows = partSection.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
@@ -301,8 +275,8 @@ function parseDisks(html: string): { details: DiskDetail[]; partitions: Partitio
   return { details, partitions };
 }
 
-function parseUsers(html: string): LocalUser[] {
-  const users: LocalUser[] = [];
+function parseUsers(html) {
+  const users = [];
   const section = extractBetween(html, "name='#usuarios'", "name='#software'");
   if (!section) return users;
 
@@ -322,7 +296,7 @@ function parseUsers(html: string): LocalUser[] {
   return users;
 }
 
-function parseSoftware(html: string): string[] {
+function parseSoftware(html) {
   const section = extractBetween(html, "name='#software'", "name='#servicos'");
   if (!section) return [];
   return section
@@ -331,8 +305,8 @@ function parseSoftware(html: string): string[] {
     .filter(s => s.length > 2 && !s.startsWith("<") && !s.toLowerCase().includes("software"));
 }
 
-function parseServices(html: string): Service[] {
-  const services: Service[] = [];
+function parseServices(html) {
+  const services = [];
   const section = extractBetween(html, "name='#servicos'", "name='#compartilhamentos'");
   if (!section) return services;
 
@@ -351,8 +325,8 @@ function parseServices(html: string): Service[] {
   return services;
 }
 
-function parseShares(html: string): Share[] {
-  const shares: Share[] = [];
+function parseShares(html) {
+  const shares = [];
   const section = extractBetween(html, "name='#compartilhamentos'", "name='#impressora'");
   if (!section) return shares;
 
@@ -366,7 +340,7 @@ function parseShares(html: string): Share[] {
   return shares;
 }
 
-function parsePrinters(html: string) {
+function parsePrinters(html) {
   const driverSection = extractBetween(html, "name='#impressora'", "name='#portas'");
   const drivers = (driverSection.match(/<td[^>]*><i>([\s\S]*?)<\/i><\/td>/gi) || [])
     .map(d => stripTags(d).trim())
@@ -382,39 +356,23 @@ function parsePrinters(html: string) {
   return { drivers, ports };
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-export function parseInventoryHTML(html: string, fileName: string): MachineInventory {
-  console.log("[Parser] Starting parse for:", fileName, "length:", html.length);
-
+function parseInventoryHTML(html, fileName, index) {
   const machineName = parseMachineName(html, fileName);
-  console.log("[Parser] Machine name:", machineName);
-
   const os = parseOS(html);
-  console.log("[Parser] OS:", os.osName);
-
   const proc = parseProcessor(html);
   const bios = parseBios(html);
   const mem = parseMemory(html);
-  console.log("[Parser] RAM:", mem.totalMB, "MB");
-
   const network = parseNetwork(html);
   const tcp = parseTCP(html);
-  console.log("[Parser] Primary IP:", tcp.primaryIP);
-
   const disks = parseDisks(html);
   const users = parseUsers(html);
   const software = parseSoftware(html);
-  console.log("[Parser] Software count:", software.length);
-
   const services = parseServices(html);
-  console.log("[Parser] Services count:", services.length);
-
   const shares = parseShares(html);
   const printers = parsePrinters(html);
 
   return {
-    id: `${machineName}-${Date.now()}`,
+    id: `desktop-machine-${index}-${machineName}`,
     machineName,
     uploadDate: new Date().toISOString(),
     fileName,
@@ -439,22 +397,47 @@ export function parseInventoryHTML(html: string, fileName: string): MachineInven
   };
 }
 
-export function saveInventories(inventories: MachineInventory[]): void {
-  localStorage.setItem("itinventory_machines", JSON.stringify(inventories));
+// ─── Main Script Execution ───────────────────────────────────────────────────
+
+const desktopFolder = "C:\\Users\\INICIO\\Desktop\\MÁQUINAS_HTML";
+const targetFile = "C:\\IP_Inventario\\src\\data\\maquinas_iniciais.json";
+
+console.log("Iniciando varredura da pasta:", desktopFolder);
+
+if (!fs.existsSync(desktopFolder)) {
+  console.error("Erro: A pasta do Desktop não foi encontrada!");
+  process.exit(1);
 }
 
-export function loadInventories(): MachineInventory[] {
+const files = fs.readdirSync(desktopFolder);
+const htmlFiles = files.filter(f => f.toLowerCase().endsWith('.html'));
+
+console.log(`Encontrados ${htmlFiles.length} arquivos HTML.`);
+
+const results = [];
+let count = 0;
+
+htmlFiles.forEach((file, index) => {
   try {
-    const data = localStorage.getItem("itinventory_machines");
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
+    const filePath = path.join(desktopFolder, file);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    if (content.length > 100) {
+      const parsed = parseInventoryHTML(content, file, index);
+      results.push(parsed);
+      count++;
+    }
+  } catch (err) {
+    console.error(`Erro ao processar ${file}:`, err.message);
   }
+});
+
+console.log(`Processamento concluído. ${count} máquinas extraídas com sucesso.`);
+
+// Gravar JSON
+const dataDir = path.dirname(targetFile);
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
 }
 
-export function removeInventory(id: string): MachineInventory[] {
-  const all = loadInventories();
-  const updated = all.filter(m => m.id !== id);
-  saveInventories(updated);
-  return updated;
-}
+fs.writeFileSync(targetFile, JSON.stringify(results, null, 2), 'utf-8');
+console.log(`Arquivo JSON gerado com sucesso em: ${targetFile}`);
