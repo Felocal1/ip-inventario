@@ -71,14 +71,12 @@ export default function MachineIPCard({ machine, onClick, onDelete }: MachineIPC
             <Wifi className="w-5 h-5 text-[hsl(var(--color-info))]" />
           </div>
           <div className="min-w-0 flex-1">
-            {/* IP Address is the most prominent text now */}
-            <h3 className="font-bold text-foreground text-lg tracking-tight truncate leading-none">
-              {machine.primaryIP || "Sem Endereço IP"}
-            </h3>
-            {/* Machine name as secondary info */}
-            <p className="text-xs text-muted-foreground font-mono mt-1.5 truncate flex items-center gap-1.5">
-              <Monitor className="w-3.5 h-3.5 inline text-muted-foreground/60" />
-              <span>{machine.machineName}</span>
+            {/* Machine name as primary info */}
+            <h3 className="font-extrabold text-foreground text-lg tracking-tight truncate leading-tight">{machine.machineName}</h3>
+            {/* IP as secondary info below name */}
+            <p className="text-sm font-mono text-muted-foreground mt-1 truncate flex items-center gap-1.5">
+              <Wifi className="w-3.5 h-3.5 inline text-muted-foreground/60" />
+              <span>{machine.primaryIP || "Sem Endereço IP"}</span>
             </p>
           </div>
           <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getOSBadgeColor(machine.osName)}`}>
