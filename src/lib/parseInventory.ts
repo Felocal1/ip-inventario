@@ -443,10 +443,31 @@ export function saveInventories(inventories: MachineInventory[]): void {
   localStorage.setItem("itinventory_machines", JSON.stringify(inventories));
 }
 
+/** Remove possíveis tags HTML em campos textuais de um inventário salvo */
+function sanitizeMachine(m: any): MachineInventory {
+  try {
+    return {
+      ...m,
+      processorName: stripTags(m.processorName || ""),
+      manufacturer: stripTags(m.manufacturer || ""),
+      model: stripTags(m.model || ""),
+      machineName: stripTags(m.machineName || ""),
+      // keep other fields as-is
+    } as MachineInventory;
+  } catch {
+    return m as MachineInventory;
+  }
+}
+
 export function loadInventories(): MachineInventory[] {
   try {
     const data = localStorage.getItem("itinventory_machines");
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    const parsed = JSON.parse(data) as any[];
+    const sanitized = parsed.map(sanitizeMachine);
+    // Persist sanitized data back to localStorage so clients are fixed
+    saveInventories(sanitized);
+    return sanitized;
   } catch {
     return [];
   }
