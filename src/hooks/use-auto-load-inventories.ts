@@ -14,8 +14,20 @@ export function useAutoLoadInventories() {
       // Se já existem dados no localStorage, não fazer nada
       if (existing.length > 0) return;
 
-      // Lista de arquivos a carregar automaticamente
-      const filesToLoad = ["MIL-CHAMMA.HTML", "MIL-AUDITORIO.HTML"];
+      // Tenta carregar uma lista estática gerada em /mil-files.json
+      const defaultFiles = ["MIL-CHAMMA.HTML", "MIL-AUDITORIO.HTML"];
+      let filesToLoad: string[] = defaultFiles;
+      try {
+        const listResp = await fetch(`/mil-files.json`);
+        if (listResp.ok) {
+          const list = await listResp.json();
+          if (Array.isArray(list) && list.length) {
+            filesToLoad = list.filter((f: string) => typeof f === "string" && /^MIL-.*\.html$/i.test(f));
+          }
+        }
+      } catch (err) {
+        // fallback: manter lista default
+      }
 
       try {
         const newMachines = [];
