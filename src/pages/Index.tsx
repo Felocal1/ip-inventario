@@ -104,8 +104,29 @@ export default function Index() {
     return result;
   };
 
-  const filteredUploaded = useMemo(() => filterAndSortList(machines), [machines, search, filterOS, filterStatus, sortBy]);
-  const filteredPreloaded = useMemo(() => filterAndSortList(activePreloaded), [activePreloaded, search, filterOS, filterStatus, sortBy]);
+  // Treat MIL-* files (manually loaded) as part of the preloaded/collected group
+  const milFromMachines = useMemo(() => machines.filter(m => {
+    const f = (m.fileName || m.machineName || "").toLowerCase();
+    return f.startsWith("mil-");
+  }), [machines]);
+
+  // Preloaded augmented: original preloaded + any MIL files loaded manually (no duplicates)
+  const preloadedAugmented = useMemo(() => {
+    const combined = [...activePreloaded];
+    milFromMachines.forEach(m => {
+      if (!combined.some(p => p.machineName === m.machineName)) combined.push(m);
+    });
+    return combined;
+  }, [activePreloaded, milFromMachines]);
+
+  // Uploaded machines displayed separately should exclude MIL-* entries
+  const uploadedWithoutMil = useMemo(() => machines.filter(m => {
+    const f = (m.fileName || m.machineName || "").toLowerCase();
+    return !f.startsWith("mil-");
+  }), [machines]);
+
+  const filteredUploaded = useMemo(() => filterAndSortList(uploadedWithoutMil), [uploadedWithoutMil, search, filterOS, filterStatus, sortBy]);
+  const filteredPreloaded = useMemo(() => filterAndSortList(preloadedAugmented), [preloadedAugmented, search, filterOS, filterStatus, sortBy]);
 
   const handleFilesLoaded = (files: Array<{ name: string; content: string }>) => {
     const current = loadInventories();
@@ -171,27 +192,28 @@ export default function Index() {
   const hasActiveFilters = search || filterOS !== "all" || filterStatus !== "all" || sortBy !== "date";
 
   // Stats
-  const totalMachinesCount = machines.length + activePreloaded.length;
-  const todayCount = machines.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString()).length +
-                     activePreloaded.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString()).length;
+  // Counts should consider the new grouping: uploadedWithoutMil + preloadedAugmented
+  const totalMachinesCount = uploadedWithoutMil.length + preloadedAugmented.length;
+  const todayCount = uploadedWithoutMil.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString()).length +
+                     preloadedAugmented.filter(m => new Date(m.uploadDate).toDateString() === new Date().toDateString()).length;
 
-  const totalRunning = machines.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "running").length, 0) +
-                       activePreloaded.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "running").length, 0);
+  const totalRunning = uploadedWithoutMil.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "running").length, 0) +
+                       preloadedAugmented.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "running").length, 0);
 
-  const totalStopped = machines.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "stopped").length, 0) +
-                       activePreloaded.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "stopped").length, 0);
+  const totalStopped = uploadedWithoutMil.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "stopped").length, 0) +
+                       preloadedAugmented.reduce((a, m) => a + m.services.filter(s => s.status.toLowerCase() === "stopped").length, 0);
 
-  const totalPartitions = machines.reduce((a, m) => a + m.partitions.length, 0) +
-                           activePreloaded.reduce((a, m) => a + m.partitions.length, 0);
+  const totalPartitions = uploadedWithoutMil.reduce((a, m) => a + m.partitions.length, 0) +
+                           preloadedAugmented.reduce((a, m) => a + m.partitions.length, 0);
 
-  const win11Count = machines.filter(m => m.osName.toLowerCase().includes("11")).length +
-                     activePreloaded.filter(m => m.osName.toLowerCase().includes("11")).length;
+  const win11Count = uploadedWithoutMil.filter(m => m.osName.toLowerCase().includes("11")).length +
+                     preloadedAugmented.filter(m => m.osName.toLowerCase().includes("11")).length;
 
-  const win10Count = machines.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length +
-                     activePreloaded.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length;
+  const win10Count = uploadedWithoutMil.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length +
+                     preloadedAugmented.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length;
 
-  const winServerCount = machines.filter(m => m.osName.toLowerCase().includes("server")).length +
-                         activePreloaded.filter(m => m.osName.toLowerCase().includes("server")).length;
+  const winServerCount = uploadedWithoutMil.filter(m => m.osName.toLowerCase().includes("server")).length +
+                         preloadedAugmented.filter(m => m.osName.toLowerCase().includes("server")).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -380,7 +402,7 @@ export default function Index() {
         )}
 
         {/* Uploaded Machines Section */}
-        {machines.length > 0 && (
+        {uploadedWithoutMil.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -388,7 +410,7 @@ export default function Index() {
                 Estações Carregadas Manualmente
               </h2>
               <span className="text-xs text-muted-foreground bg-[hsl(var(--color-surface-2))] border border-border px-2.5 py-1 rounded-full font-mono">
-                {filteredUploaded.length} de {machines.length}
+                {filteredUploaded.length} de {uploadedWithoutMil.length}
               </span>
             </div>
             {filteredUploaded.length > 0 ? (
@@ -411,7 +433,7 @@ export default function Index() {
         )}
 
         {/* Preloaded Rede Section */}
-        {activePreloaded.length > 0 && (
+        {preloadedAugmented.length > 0 && (
           <div className="mt-8 border-t border-border/40 pt-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
@@ -424,7 +446,7 @@ export default function Index() {
                 </p>
               </div>
               <span className="self-start sm:self-center text-xs text-muted-foreground bg-[hsl(var(--color-surface-2))] border border-border px-2.5 py-1 rounded-full font-mono">
-                {filteredPreloaded.length} de {activePreloaded.length}
+                {filteredPreloaded.length} de {preloadedAugmented.length}
               </span>
             </div>
 
