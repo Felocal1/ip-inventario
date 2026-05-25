@@ -156,12 +156,6 @@ export default function MachineDetail() {
             <div className="mt-3">
               <DataRow label="Sistema" value={machine.osName} />
               <DataRow label="Versão" value={machine.osVersion} />
-              <DataRow label="Service Pack" value={machine.servicePack} />
-              <DataRow label="Boot Device" value={machine.bootDevice} />
-              <DataRow label="Diretório de instalação" value={machine.installDir} />
-              <DataRow label="Usuário registrado" value={machine.registeredUser} />
-              <DataRow label="Número serial" value={machine.serialNumber} />
-              <DataRow label="Fuso horário" value={machine.timeZone} />
             </div>
           </SectionWrapper>
 
