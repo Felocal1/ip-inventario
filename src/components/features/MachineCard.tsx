@@ -1,4 +1,4 @@
-import { Monitor, Server, Wifi, HardDrive, Cpu, Package, Activity, Tag } from "lucide-react";
+import { Monitor, Server, Cpu, Package, Activity, Tag } from "lucide-react";
 import type { MachineInventory } from "@/types/inventory";
 
 interface MachineCardProps {
@@ -71,8 +71,9 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
             <Monitor className="w-5 h-5 text-[hsl(var(--color-info))]" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-foreground truncate text-base leading-tight">{machine.machineName}</h3>
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <h3 className="font-extrabold text-foreground truncate text-lg leading-tight">{machine.machineName}</h3>
+            <p className="text-sm font-mono text-muted-foreground mt-1 truncate">{machine.primaryIP || "—"}</p>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getOSBadgeColor(machine.osName)}`}>
                 {getOSShort(machine.osName)}
               </span>
@@ -91,7 +92,6 @@ export default function MachineCard({ machine, onClick, onDelete }: MachineCardP
           <InfoItem icon={<Cpu className="w-3.5 h-3.5" />} label="CPU"
             value={machine.processorName?.replace(/\(R\)|\(TM\)/g, "").split(" ").slice(0, 5).join(" ") || machine.processorFamily?.split(" ").slice(0, 3).join(" ") || "—"} />
           <InfoItem icon={<Server className="w-3.5 h-3.5" />} label="RAM" value={formatMB(machine.totalMemoryMB)} />
-          <InfoItem icon={<Wifi className="w-3.5 h-3.5" />} label="IP" value={machine.primaryIP || "—"} />
           <InfoItem icon={<Tag className="w-3.5 h-3.5" />} label="Service Tag" value={machine.serviceTag || machine.model || "—"} />
         </div>
 
