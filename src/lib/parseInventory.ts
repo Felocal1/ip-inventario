@@ -97,7 +97,7 @@ function parseOS(html: string) {
 function parseProcessor(html: string) {
   // Comment markers
   const procNameComment = html.match(/<!Processador>([\s\S]*?)<!Fim_Proc>/i);
-  const procName = procNameComment ? procNameComment[1].trim() : "";
+  const procName = procNameComment ? stripTags(procNameComment[1].trim()) : "";
 
   const section = extractBetween(html, "name='#proc'", "name='#bios'");
   const text = stripTags(section);
