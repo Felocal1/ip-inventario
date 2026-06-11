@@ -126,4 +126,7 @@ export interface MachineInventory {
   // Printers
   printerDrivers: string[];
   printerPorts: PrinterPort[];
+
+  // Metadata
+  isNetworkCollected?: boolean;
 }

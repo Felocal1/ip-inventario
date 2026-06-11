@@ -110,11 +110,14 @@ export default function Index() {
         try {
           if (!content || content.length < 100) return;
           const parsed = parseInventoryHTML(content, name);
+          parsed.isNetworkCollected = true; // Mark as network synced
+          
           const existIdx = current.findIndex(m => m.machineName === parsed.machineName);
           if (existIdx >= 0) {
             current[existIdx] = {
               ...current[existIdx],
               ...parsed,
+              isNetworkCollected: true,
               uploadDate: new Date().toISOString()
             };
             updated++;
@@ -242,25 +245,31 @@ export default function Index() {
     return result;
   };
 
-  // Treat MIL-* files (manually loaded) as part of the preloaded/collected group
-  const milFromMachines = useMemo(() => machines.filter(m => {
+  // Treat MIL-* files (manually loaded) and network-collected files as part of the preloaded/collected group
+  const collectedFromMachines = useMemo(() => machines.filter(m => {
     const f = (m.fileName || m.machineName || "").toLowerCase();
-    return f.startsWith("mil-");
+    return m.isNetworkCollected || f.startsWith("mil-");
   }), [machines]);
 
-  // Preloaded augmented: original preloaded + any MIL files loaded manually (no duplicates)
+  // Preloaded augmented: original preloaded + any collected files (no duplicates by machineName)
+  // If a collected machine already exists in activePreloaded, overwrite it with the updated sync version
   const preloadedAugmented = useMemo(() => {
     const combined = [...activePreloaded];
-    milFromMachines.forEach(m => {
-      if (!combined.some(p => p.machineName === m.machineName)) combined.push(m);
+    collectedFromMachines.forEach(m => {
+      const existIdx = combined.findIndex(p => p.machineName === m.machineName);
+      if (existIdx >= 0) {
+        combined[existIdx] = m;
+      } else {
+        combined.push(m);
+      }
     });
     return combined;
-  }, [activePreloaded, milFromMachines]);
+  }, [activePreloaded, collectedFromMachines]);
 
-  // Uploaded machines displayed separately should exclude MIL-* entries
+  // Uploaded machines displayed separately should exclude collected/MIL-* entries
   const uploadedWithoutMil = useMemo(() => machines.filter(m => {
     const f = (m.fileName || m.machineName || "").toLowerCase();
-    return !f.startsWith("mil-");
+    return !m.isNetworkCollected && !f.startsWith("mil-");
   }), [machines]);
 
   const filteredUploaded = useMemo(() => filterAndSortList(uploadedWithoutMil), [uploadedWithoutMil, search, filterOS, filterStatus, sortBy]);
