@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import Header from "@/components/layout/Cabecalho";
 import MachineCard from "@/components/features/MachineCard";
@@ -9,6 +9,13 @@ import { parseInventoryHTML, loadInventories, saveInventories, removeInventory }
 import type { MachineInventory } from "@/types/inventory";
 import { Search, Server, HardDrive, Monitor, Activity, ChevronDown, SlidersHorizontal, X, Wifi } from "lucide-react";
 import heroBg from "@/assets/herói-bg.jpg";
+import {
+  isFileSystemAccessSupported,
+  saveDirectoryHandle,
+  getDirectoryHandle,
+  verifyPermission,
+  readHtmlFilesFromDirectory
+} from "@/lib/directoryPicker";
 
 type FilterOS = "all" | "win11" | "win10" | "server" | "other";
 type FilterStatus = "all" | "today";
@@ -31,7 +38,139 @@ export default function Index() {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [sortBy, setSortBy] = useState<SortBy>("date");
   const [showFilters, setShowFilters] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  const handleRefreshDirectory = async (forceSelect = false) => {
+    if (!isFileSystemAccessSupported()) {
+      toast.error(
+        "A sincronização de pasta local não é suportada neste navegador. Utilize o Google Chrome, Microsoft Edge ou outro navegador compatível com Chromium, ou use o botão '+ Carregar HTML' para envio manual.",
+        { duration: 8000 }
+      );
+      return;
+    }
+
+    setIsRefreshing(true);
+    const toastId = toast.loading("Conectando à pasta de rede...");
+    try {
+      let handle = forceSelect ? null : await getDirectoryHandle();
+
+      if (!handle) {
+        toast.loading("Selecione a pasta de inventários (ex: \\\\192.168.0.10\\inventario)...", { id: toastId });
+        try {
+          handle = await window.showDirectoryPicker({
+            mode: "read"
+          });
+          await saveDirectoryHandle(handle);
+        } catch (pickerErr) {
+          console.warn("User cancelled the directory picker:", pickerErr);
+          toast.dismiss(toastId);
+          setIsRefreshing(false);
+          return;
+        }
+      }
+
+      toast.loading("Verificando permissões de acesso...", { id: toastId });
+      const hasPermission = await verifyPermission(handle, false);
+      if (!hasPermission) {
+        toast.loading("Permissão expirada. Re-selecione a pasta de rede...", { id: toastId });
+        try {
+          handle = await window.showDirectoryPicker({ mode: "read" });
+          await saveDirectoryHandle(handle);
+          const retryPermission = await verifyPermission(handle, false);
+          if (!retryPermission) {
+            throw new Error("Permissão de leitura não concedida.");
+          }
+        } catch (pickerErr) {
+          console.warn("User cancelled directory picker on retry:", pickerErr);
+          toast.dismiss(toastId);
+          setIsRefreshing(false);
+          return;
+        }
+      }
+
+      toast.loading("Lendo arquivos da pasta de rede...", { id: toastId });
+      const files = await readHtmlFilesFromDirectory(handle);
+
+      if (files.length === 0) {
+        toast.info("Nenhum arquivo HTML encontrado na pasta de rede.", { id: toastId });
+        setIsRefreshing(false);
+        return;
+      }
+
+      toast.loading(`Processando ${files.length} relatórios HTML...`, { id: toastId });
+
+      const current = loadInventories();
+      const newMachines: MachineInventory[] = [];
+      let updated = 0;
+      let errors = 0;
+
+      files.forEach(({ name, content }) => {
+        try {
+          if (!content || content.length < 100) return;
+          const parsed = parseInventoryHTML(content, name);
+          const existIdx = current.findIndex(m => m.machineName === parsed.machineName);
+          if (existIdx >= 0) {
+            current[existIdx] = {
+              ...current[existIdx],
+              ...parsed,
+              uploadDate: new Date().toISOString()
+            };
+            updated++;
+          } else {
+            newMachines.push(parsed);
+          }
+        } catch (err) {
+          console.error(`Erro ao fazer parse do arquivo ${name}:`, err);
+          errors++;
+        }
+      });
+
+      const result = [...current, ...newMachines];
+      saveInventories(result);
+      setMachines(result);
+
+      let statusMsg = "";
+      if (newMachines.length > 0 && updated > 0) {
+        statusMsg = `${newMachines.length} novas estações importadas e ${updated} atualizadas!`;
+      } else if (newMachines.length > 0) {
+        statusMsg = `${newMachines.length} novas estações importadas com sucesso!`;
+      } else if (updated > 0) {
+        statusMsg = `${updated} estações atualizadas com sucesso!`;
+      } else {
+        statusMsg = "Todas as estações já estavam atualizadas!";
+      }
+
+      if (errors > 0) {
+        statusMsg += ` (Aviso: ${errors} falhas no processamento)`;
+      }
+
+      toast.success(statusMsg, { id: toastId, duration: 6000 });
+    } catch (err) {
+      console.error("Erro durante a sincronização da pasta de rede:", err);
+      toast.error(`Falha ao sincronizar: ${err instanceof Error ? err.message : String(err)}`, { id: toastId });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Check for auto-sync parameter
+  useEffect(() => {
+    const sync = searchParams.get("sync");
+    const select = searchParams.get("select");
+    
+    if (sync === "true") {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("sync");
+      newParams.delete("select");
+      setSearchParams(newParams, { replace: true });
+      
+      setTimeout(() => {
+        handleRefreshDirectory(select === "true");
+      }, 300);
+    }
+  }, [searchParams]);
 
   // Fetch the preloaded inventory JSON from the public folder (served by Vercel/local dev)
   useEffect(() => {
@@ -52,7 +191,6 @@ export default function Index() {
         toast.error('Não foi possível carregar os dados das máquinas pré‑carregadas.');
       });
   }, []);
-
 
   const activePreloaded = useMemo(() => {
     return preloadedMachines.filter(m => !deletedPreloaded.includes(m.id));
@@ -213,11 +351,11 @@ export default function Index() {
                      preloadedAugmented.filter(m => m.osName.toLowerCase().includes("10") && !m.osName.toLowerCase().includes("server")).length;
 
   const winServerCount = uploadedWithoutMil.filter(m => m.osName.toLowerCase().includes("server")).length +
-                         preloadedAugmented.filter(m => m.osName.toLowerCase().includes("server")).length;
+                          preloadedAugmented.filter(m => m.osName.toLowerCase().includes("server")).length;
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header onRefreshDirectory={handleRefreshDirectory} isRefreshing={isRefreshing} />
 
       {/* Hero */}
       <div className="relative overflow-hidden border-b border-border">
