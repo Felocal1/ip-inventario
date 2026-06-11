@@ -410,45 +410,56 @@ function parseInventoryHTML(html, fileName, index) {
 
 // ─── Main Script Execution ───────────────────────────────────────────────────
 
-const desktopFolder = "C:\\Users\\INICIO\\Desktop\\MÁQUINAS_HTML";
-const targetFile = "C:\\IP_Inventario\\src\\data\\maquinas_iniciais.json";
+const networkFolder   = "\\\\192.168.0.10\\inventario";
+const publicFolder    = path.resolve(__dirname, '..', 'public');
+const targetFile      = path.join(publicFolder, 'maquinas_iniciais.json');
 
-console.log("Iniciando varredura da pasta:", desktopFolder);
+console.log("Iniciando varredura da pasta de rede:", networkFolder);
 
-if (!fs.existsSync(desktopFolder)) {
-  console.error("Erro: A pasta do Desktop não foi encontrada!");
+if (!fs.existsSync(networkFolder)) {
+  console.error("Erro: A pasta de rede não foi encontrada! Verifique o acesso a:", networkFolder);
   process.exit(1);
 }
 
-const files = fs.readdirSync(desktopFolder);
+const files = fs.readdirSync(networkFolder);
 const htmlFiles = files.filter(f => f.toLowerCase().endsWith('.html'));
 
-console.log(`Encontrados ${htmlFiles.length} arquivos HTML.`);
+console.log(`Encontrados ${htmlFiles.length} arquivos HTML em ${networkFolder}.`);
 
 const results = [];
 let count = 0;
+let copyCount = 0;
+let copyErrors = 0;
 
 htmlFiles.forEach((file, index) => {
   try {
-    const filePath = path.join(desktopFolder, file);
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const srcPath  = path.join(networkFolder, file);
+    const destPath = path.join(publicFolder, file);
+    const content  = fs.readFileSync(srcPath, 'latin1'); // VBS files use latin1 encoding
+
     if (content.length > 100) {
+      // Parse to JSON
       const parsed = parseInventoryHTML(content, file, index);
       results.push(parsed);
       count++;
+
+      // Copy HTML to /public so the app can also serve them
+      try {
+        fs.copyFileSync(srcPath, destPath);
+        copyCount++;
+      } catch (copyErr) {
+        console.warn(`  ⚠ Não foi possível copiar ${file} para /public: ${copyErr.message}`);
+        copyErrors++;
+      }
     }
   } catch (err) {
     console.error(`Erro ao processar ${file}:`, err.message);
   }
 });
 
-console.log(`Processamento concluído. ${count} máquinas extraídas com sucesso.`);
+console.log(`\nProcessamento concluído: ${count} máquinas extraídas.`);
+console.log(`Arquivos copiados para /public: ${copyCount} OK, ${copyErrors} erros.`);
 
 // Gravar JSON
-const dataDir = path.dirname(targetFile);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
 fs.writeFileSync(targetFile, JSON.stringify(results, null, 2), 'utf-8');
 console.log(`Arquivo JSON gerado com sucesso em: ${targetFile}`);
