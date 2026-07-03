@@ -13,6 +13,8 @@ import {
   isFileSystemAccessSupported,
   saveDirectoryHandle,
   getDirectoryHandle,
+  clearDirectoryHandle,
+  isHandleAccessible,
   verifyPermission,
   readHtmlFilesFromDirectory
 } from "@/lib/directoryPicker";
@@ -53,45 +55,100 @@ export default function Index() {
 
     setIsRefreshing(true);
     const toastId = toast.loading("Conectando à pasta de rede...");
+
+    /**
+     * Helper: open the directory picker and save the new handle.
+     * Returns the handle on success, or null if the user cancelled.
+     */
+    const pickDirectory = async (): Promise<FileSystemDirectoryHandle | null> => {
+      try {
+        const h = await window.showDirectoryPicker({ mode: "read" });
+        await saveDirectoryHandle(h);
+        return h;
+      } catch {
+        // User cancelled (AbortError) or picker not available
+        return null;
+      }
+    };
+
     try {
-      let handle = forceSelect ? null : await getDirectoryHandle();
+      // ── 1. Retrieve or select the directory handle ──────────────────────────
+      let handle: FileSystemDirectoryHandle | null = forceSelect
+        ? null
+        : await getDirectoryHandle();
 
       if (!handle) {
-        toast.loading("Selecione a pasta de inventários (ex: \\\\192.168.0.10\\inventario)...", { id: toastId });
-        try {
-          handle = await window.showDirectoryPicker({
-            mode: "read"
-          });
-          await saveDirectoryHandle(handle);
-        } catch (pickerErr) {
-          console.warn("User cancelled the directory picker:", pickerErr);
+        toast.loading(
+          "Selecione a pasta de inventários (ex: \\\\192.168.0.10\\inventario)...",
+          { id: toastId }
+        );
+        handle = await pickDirectory();
+        if (!handle) {
           toast.dismiss(toastId);
           setIsRefreshing(false);
           return;
         }
       }
 
-      toast.loading("Verificando permissões de acesso...", { id: toastId });
+      // ── 2. Validate that the handle is still physically accessible ──────────
+      //    queryPermission() alone does NOT detect stale UNC-path handles —
+      //    we do a lightweight iterator probe to confirm the path is live.
+      toast.loading("Verificando acesso à pasta de rede...", { id: toastId });
+      const accessible = await isHandleAccessible(handle);
+      if (!accessible) {
+        // The saved handle is stale (e.g. network path moved/unreachable).
+        // Clear it from IndexedDB so future syncs start fresh.
+        await clearDirectoryHandle();
+        toast.loading(
+          "A pasta salva não está mais acessível. Re-selecione a pasta de rede...",
+          { id: toastId }
+        );
+        handle = await pickDirectory();
+        if (!handle) {
+          toast.dismiss(toastId);
+          setIsRefreshing(false);
+          return;
+        }
+      }
+
+      // ── 3. Verify read permission ────────────────────────────────────────────
       const hasPermission = await verifyPermission(handle, false);
       if (!hasPermission) {
         toast.loading("Permissão expirada. Re-selecione a pasta de rede...", { id: toastId });
-        try {
-          handle = await window.showDirectoryPicker({ mode: "read" });
-          await saveDirectoryHandle(handle);
-          const retryPermission = await verifyPermission(handle, false);
-          if (!retryPermission) {
-            throw new Error("Permissão de leitura não concedida.");
-          }
-        } catch (pickerErr) {
-          console.warn("User cancelled directory picker on retry:", pickerErr);
+        handle = await pickDirectory();
+        if (!handle) {
           toast.dismiss(toastId);
           setIsRefreshing(false);
           return;
         }
+        const retryPermission = await verifyPermission(handle, false);
+        if (!retryPermission) {
+          throw new Error("Permissão de leitura não concedida.");
+        }
       }
 
+      // ── 4. Read HTML files ───────────────────────────────────────────────────
       toast.loading("Lendo arquivos da pasta de rede...", { id: toastId });
-      const files = await readHtmlFilesFromDirectory(handle);
+      let files: Array<{ name: string; content: string }>;
+      try {
+        files = await readHtmlFilesFromDirectory(handle);
+      } catch (readErr: unknown) {
+        const msg = readErr instanceof Error ? readErr.message : String(readErr);
+        // STALE_HANDLE prefix is set by readHtmlFilesFromDirectory when the
+        // async iterator itself throws (UNC path became unavailable mid-read).
+        if (msg.startsWith("STALE_HANDLE")) {
+          await clearDirectoryHandle();
+          toast.error(
+            "A pasta de rede ficou inacessível durante a leitura. " +
+            "Verifique a conexão com \\\\192.168.0.10\\inventario e tente novamente.",
+            { id: toastId, duration: 10000 }
+          );
+        } else {
+          toast.error(`Falha ao ler a pasta: ${msg}`, { id: toastId });
+        }
+        setIsRefreshing(false);
+        return;
+      }
 
       if (files.length === 0) {
         toast.info("Nenhum arquivo HTML encontrado na pasta de rede.", { id: toastId });
@@ -99,6 +156,7 @@ export default function Index() {
         return;
       }
 
+      // ── 5. Parse and merge ───────────────────────────────────────────────────
       toast.loading(`Processando ${files.length} relatórios HTML...`, { id: toastId });
 
       const current = loadInventories();
@@ -110,8 +168,8 @@ export default function Index() {
         try {
           if (!content || content.length < 100) return;
           const parsed = parseInventoryHTML(content, name);
-          parsed.isNetworkCollected = true; // Mark as network synced
-          
+          parsed.isNetworkCollected = true;
+
           const existIdx = current.findIndex(m => m.machineName === parsed.machineName);
           if (existIdx >= 0) {
             current[existIdx] = {
@@ -144,15 +202,13 @@ export default function Index() {
       } else {
         statusMsg = "Todas as estações já estavam atualizadas!";
       }
-
-      if (errors > 0) {
-        statusMsg += ` (Aviso: ${errors} falhas no processamento)`;
-      }
+      if (errors > 0) statusMsg += ` (Aviso: ${errors} falhas no processamento)`;
 
       toast.success(statusMsg, { id: toastId, duration: 6000 });
     } catch (err) {
       console.error("Erro durante a sincronização da pasta de rede:", err);
-      toast.error(`Falha ao sincronizar: ${err instanceof Error ? err.message : String(err)}`, { id: toastId });
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Falha ao sincronizar: ${msg}`, { id: toastId });
     } finally {
       setIsRefreshing(false);
     }
